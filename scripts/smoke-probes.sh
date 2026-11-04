@@ -18,6 +18,7 @@ before_install() {
 identity_check() {
   local password='wonton-e2e-password'
   local auth='Client="Wonton Smoke", Device="smoke", DeviceId="wonton-smoke", Version="1.0.0"'
+  local session_auth body login token user_id me folders item_id headers status
 
   curl -sS --noproxy '*' --fail-with-body -b "$SMOKE_JAR" "$SMOKE_WEB_URL/Startup/User" >/dev/null || {
     echo "GET /Startup/User 失败"; return 1;
@@ -48,18 +49,19 @@ identity_check() {
   }
   token="$(jq -r '.AccessToken // empty' <<<"$login")"
   user_id="$(jq -r '.User.Id // empty' <<<"$login")"
+  session_auth="MediaBrowser Client=\"Wonton Smoke\", Device=\"smoke\", DeviceId=\"wonton-smoke\", Version=\"1.0.0\", Token=\"$token\""
   [[ -n "$token" && -n "$user_id" ]] || { echo "登录响应没有 AccessToken/User.Id：$login"; return 1; }
-  me="$(curl -sS --noproxy '*' --fail-with-body -b "$SMOKE_JAR" -H "X-Emby-Token: $token" "$SMOKE_WEB_URL/Users/Me")" || {
+  me="$(curl -sS --noproxy '*' --fail-with-body -b "$SMOKE_JAR" -H "Authorization: $session_auth" "$SMOKE_WEB_URL/Users/Me")" || {
     echo "GET /Users/Me 失败：$me"; return 1;
   }
   jq -e --arg name "$SMOKE_OWNER" '.Name == $name and .Policy.IsAdministrator == true' <<<"$me" >/dev/null || {
     echo "当前用户不是主人管理员：$me"; return 1;
   }
 
-  folders="$(curl -sS --noproxy '*' --fail-with-body -b "$SMOKE_JAR" -H "X-Emby-Token: $token" \
+  folders="$(curl -sS --noproxy '*' --fail-with-body -b "$SMOKE_JAR" -H "Authorization: $session_auth" \
     "$SMOKE_WEB_URL/Library/VirtualFolders")" || { echo "读取媒体库失败：$folders"; return 1; }
   if ! jq -e 'any(.[]; .Locations[]? == "/media")' <<<"$folders" >/dev/null; then
-    curl -sS --noproxy '*' --fail-with-body -b "$SMOKE_JAR" -H "X-Emby-Token: $token" \
+    curl -sS --noproxy '*' --fail-with-body -b "$SMOKE_JAR" -H "Authorization: $session_auth" \
       -X POST "$SMOKE_WEB_URL/Library/VirtualFolders?name=Media&collectionType=mixed&paths=%2Fmedia&refreshLibrary=true" >/dev/null || {
       echo "创建 /media 媒体库失败"; return 1;
     }
@@ -67,7 +69,7 @@ identity_check() {
 
   item_id=''
   for _ in $(seq 1 30); do
-    folders="$(curl -sS --noproxy '*' --fail-with-body -b "$SMOKE_JAR" -H "X-Emby-Token: $token" \
+    folders="$(curl -sS --noproxy '*' --fail-with-body -b "$SMOKE_JAR" -H "Authorization: $session_auth" \
       --get --data-urlencode 'Recursive=true' --data-urlencode 'Fields=Path' \
       --data-urlencode "UserId=$user_id" "$SMOKE_WEB_URL/Items" 2>/dev/null || true)"
     item_id="$(jq -r '.Items[]? | select(.Path == "/media/e2e-test.mp4") | .Id' <<<"$folders" | head -1)"
@@ -78,7 +80,7 @@ identity_check() {
 
   headers="$(mktemp)"
   status="$(curl -sS --noproxy '*' -o /dev/null -D "$headers" -w '%{http_code}' -b "$SMOKE_JAR" \
-    -H "X-Emby-Token: $token" -H 'Range: bytes=0-31' \
+    -H "Authorization: $session_auth" -H 'Range: bytes=0-31' \
     "$SMOKE_WEB_URL/Videos/$item_id/stream.mp4?Static=true")" || {
     rm -f "$headers"; echo "Range 请求失败"; return 1;
   }
