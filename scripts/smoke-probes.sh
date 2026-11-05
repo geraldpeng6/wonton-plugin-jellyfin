@@ -22,9 +22,15 @@ identity_check() {
   mkdir -p "$share" || { echo "创建 media 共享文件夹失败：$share"; return 1; }
   cp "$work/jellyfin-e2e-test.mp4" "$share/e2e-test.mp4" || { echo "复制测试视频失败"; return 1; }
 
-  curl -sS --noproxy '*' --fail-with-body -b "$SMOKE_JAR" "$SMOKE_WEB_URL/Startup/User" >/dev/null || {
-    echo "GET /Startup/User 失败"; return 1;
-  }
+  local tries=0
+  while :; do
+    if curl -sS --noproxy '*' --fail-with-body -b "$SMOKE_JAR" "$SMOKE_WEB_URL/Startup/User" >/dev/null 2>&1; then
+      break
+    fi
+    tries=$((tries + 1))
+    ((tries >= 15)) && { echo "GET /Startup/User 失败（重试 $tries 次）"; return 1; }
+    sleep 2
+  done
   body="$(jq -nc --arg name "$SMOKE_OWNER" --arg password "$password" '{Name:$name,Password:$password}')"
   curl -sS --noproxy '*' --fail-with-body -b "$SMOKE_JAR" -H 'Content-Type: application/json' \
     -d "$body" "$SMOKE_WEB_URL/Startup/User" >/dev/null || {
