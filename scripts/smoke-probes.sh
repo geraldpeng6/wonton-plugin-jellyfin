@@ -75,8 +75,11 @@ identity_check() {
     }
   fi
 
+  curl -sS --noproxy '*' --fail-with-body -b "$SMOKE_JAR" -H "Authorization: $session_auth" \
+    -X POST "$SMOKE_WEB_URL/Library/Refresh" >/dev/null || { echo "触发媒体扫描失败"; return 1; }
+
   item_id=''
-  for _ in $(seq 1 30); do
+  for _ in $(seq 1 60); do
     folders="$(curl -sS --noproxy '*' --fail-with-body -b "$SMOKE_JAR" -H "Authorization: $session_auth" \
       --get --data-urlencode 'Recursive=true' --data-urlencode 'Fields=Path' \
       --data-urlencode "UserId=$user_id" "$SMOKE_WEB_URL/Items" 2>/dev/null || true)"
