@@ -87,7 +87,13 @@ identity_check() {
     [[ -n "$item_id" ]] && break
     sleep 2
   done
-  [[ -n "$item_id" ]] || { echo "扫描不到 /media/e2e-test.mp4：$folders"; return 1; }
+  [[ -n "$item_id" ]] || {
+    echo "扫描不到 /media/e2e-test.mp4"
+    echo "共享目录：$(ls -la "$share" 2>&1 || true)"
+    echo "媒体库：$(curl -sS --noproxy '*' -b "$SMOKE_JAR" -H "Authorization: $session_auth" "$SMOKE_WEB_URL/Library/VirtualFolders" 2>&1 || true)"
+    echo "Items：$folders"
+    return 1
+  }
 
   headers="$(mktemp)"
   status="$(curl -sS --noproxy '*' -o /dev/null -D "$headers" -w '%{http_code}' -b "$SMOKE_JAR" \
