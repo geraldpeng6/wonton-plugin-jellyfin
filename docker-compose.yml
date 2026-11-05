@@ -1,8 +1,9 @@
 services:
   prepare:
+    # Jellyfin 12.4 的实际配置目录是 /config/config，不是 /config。
     image: &jellyfin jellyfin/jellyfin:12.4@sha256:fea863d0cd9ec445985d9c75fc6ed64e38a1d2766cf0c250a33d553f4fc1b771
     user: "${PUID}:${PGID}"
-    entrypoint: ["/bin/sh", "-ec", "test -e /data/system.xml || cp /seed/system.xml /data/system.xml"]
+    entrypoint: ["/bin/sh", "-ec", "mkdir -p /data/config && test -e /data/config/system.xml || cp /seed/system.xml /data/config/system.xml"]
     volumes:
       - ${WONTON_APP_DATA}/config:/data
     configs:
@@ -61,13 +62,13 @@ x-wonton:
 
       配置、缓存和媒体库元数据放在插件自己的数据目录；共享文件夹只读，不会被 Jellyfin 修改。
 
-      首次打开需要完成 Jellyfin 自己的初始化向导并创建管理员；插件预置中文 UI 和元数据，但不会写默认密码。
+      首次打开需要完成 Jellyfin 自己的初始化向导并创建管理员；插件预置中文元数据，网页界面语言跟随浏览器语言，但不会写默认密码。
     en: |
       Jellyfin turns the movies, shows and music in your shared folder into a web media library for scanning, browsing and streaming.
 
       Configuration, cache and library metadata stay in the plugin data directory; the shared folder is read-only and Jellyfin does not modify it.
 
-      The first opening requires Jellyfin's own setup wizard to create an administrator. The plugin preselects Chinese UI and metadata without writing a default password.
+      The first opening requires Jellyfin's own setup wizard to create an administrator. The plugin preselects Chinese metadata; the web UI language follows the browser language. No default password is written.
   release_notes: { zh: 首次发布 Jellyfin 12.4 插件。, en: First Jellyfin 12.4 plugin release. }
   webui:
     service: jellyfin

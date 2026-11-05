@@ -3,7 +3,6 @@
   <IsStartupWizardCompleted>false</IsStartupWizardCompleted>
   <ServerName>Jellyfin</ServerName>
   <MetadataPath>/config/metadata</MetadataPath>
-  <UICulture>zh-CN</UICulture>
   <PreferredMetadataLanguage>zh-cn</PreferredMetadataLanguage>
   <MetadataCountryCode>CN</MetadataCountryCode>
 </ServerConfiguration>

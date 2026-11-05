@@ -36,12 +36,12 @@ scripts/dev.sh install
 
 Jellyfin 12.4 稳定版没有调研中提到的原生 OIDC，因此清单使用 `sso: none`：云吞网关保护网页，Jellyfin 保留自己的管理员登录。
 
-首次打开 Jellyfin 会进入上游初始化向导：创建主人自己的管理员账号，媒体目录填写 `/media`，元数据语言默认预置为中文。完成向导后即可扫描和播放共享文件夹里的媒体。
+首次打开 Jellyfin 会进入上游初始化向导：创建主人自己的管理员账号，媒体目录填写 `/media`，元数据语言默认预置为中文。网页界面语言跟随浏览器语言，完成向导后即可扫描和播放共享文件夹里的媒体。
 Chrome、Firefox 和 curl 把 `*.localhost` 直接解析到本机，不用改 hosts。
 
 ## 首次启动与登录
 
-插件第一次创建数据目录时，用同一个官方 Jellyfin 镜像复制 `config/system.xml`，只预置中文 UI、中文元数据和中国地区；已有配置不会覆盖。首次管理员账号和密码仍由 Jellyfin 上游初始化向导创建，插件不写默认密码、不改数据库。
+插件第一次创建数据目录时，用同一个官方 Jellyfin 镜像复制 `config/system.xml`，只预置中文元数据和中国地区；网页界面语言跟随浏览器语言，已有配置不会覆盖。首次管理员账号和密码仍由 Jellyfin 上游初始化向导创建，插件不写默认密码、不改数据库。
 
 这不是遗漏：Jellyfin `v12.4` 标签树没有上游调研里提到的 OIDC 实现，反向代理请求头也不是 Jellyfin 核心支持的登录方式。为避免自研认证侧车和把主人的凭据交给插件，本版保留 `sso: none`。原生客户端、DLNA 和转码显卡不在本 PR 范围内。
 
@@ -50,7 +50,7 @@ Chrome、Firefox 和 curl 把 `*.localhost` 直接解析到本机，不用改 ho
 | 路径 | 内容 |
 | --- | --- |
 | `docker-compose.yml` | 插件本身：Jellyfin compose 加上 `x-wonton` 清单 |
-| `config/system.xml` | 首次创建配置目录时复制的中文默认配置 |
+| `config/system.xml` | 首次创建配置目录时复制的中文元数据默认配置 |
 | `icon.svg` | Jellyfin 官方图标 |
 | `scripts/check.sh` | 检查插件包，规则和安装时一样 |
 | `scripts/dev.sh` | 开发环境：起一套云吞，装、重装、卸载插件，看日志 |
