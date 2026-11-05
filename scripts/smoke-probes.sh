@@ -5,20 +5,22 @@ MCP=0
 web_assert() { grep -qiE 'jellyfin|setup|wizard'; }
 
 before_install() {
-  local share="$SMOKE_DIR/.wonton/data/shares/media"
   command -v ffmpeg >/dev/null 2>&1 || { echo "缺少 ffmpeg，无法生成测试视频"; return 1; }
-  mkdir -p "$share" || { echo "创建 media 共享文件夹失败：$share"; return 1; }
   nice -n 19 ffmpeg -hide_banner -loglevel error -y \
     -f lavfi -i color=c=blue:s=320x180:d=3 \
     -f lavfi -i sine=frequency=440:duration=3 \
     -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart \
-    "$share/e2e-test.mp4" || { echo "生成测试视频失败"; return 1; }
+    "$work/jellyfin-e2e-test.mp4" || { echo "生成测试视频失败"; return 1; }
 }
 
 identity_check() {
   local password='wonton-e2e-password'
   local auth='Client="Wonton Smoke", Device="smoke", DeviceId="wonton-smoke", Version="1.0.0"'
+  local share="$SMOKE_DIR/.wonton/data/shares/media"
   local session_auth body login token user_id me folders item_id headers status
+
+  mkdir -p "$share" || { echo "创建 media 共享文件夹失败：$share"; return 1; }
+  cp "$work/jellyfin-e2e-test.mp4" "$share/e2e-test.mp4" || { echo "复制测试视频失败"; return 1; }
 
   curl -sS --noproxy '*' --fail-with-body -b "$SMOKE_JAR" "$SMOKE_WEB_URL/Startup/User" >/dev/null || {
     echo "GET /Startup/User 失败"; return 1;
