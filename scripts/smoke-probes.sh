@@ -1,6 +1,6 @@
-# Jellyfin：sso=none。上游 12.4 没有原生 OIDC，测试实例经 Startup API 创建主人管理员。
-SSO=none
-MCP=0
+# shellcheck shell=bash
+# Jellyfin：sso=none。上游 12.4 没有原生 OIDC，测试实例经 Startup API 创建管理员。
+# shellcheck disable=SC2154 # work 由 scripts/smoke.sh 提供
 
 web_assert() { grep -qiE 'jellyfin|setup|wizard'; }
 
