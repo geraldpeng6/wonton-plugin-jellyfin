@@ -1,7 +1,7 @@
 services:
   prepare:
     # Jellyfin 12.4 的实际配置目录是 /config/config，不是 /config。
-    image: &jellyfin jellyfin/jellyfin:12.4@sha256:fea863d0cd9ec445985d9c75fc6ed64e38a1d2766cf0c250a33d553f4fc1b771
+    image: jellyfin/jellyfin:12.4@sha256:fea863d0cd9ec445985d9c75fc6ed64e38a1d2766cf0c250a33d553f4fc1b771
     user: "${PUID}:${PGID}"
     entrypoint: ["/bin/sh", "-ec", "mkdir -p /data/config && test -e /data/config/system.xml || install -m 0644 /seed/system.xml /data/config/system.xml"]
     volumes:
@@ -16,7 +16,7 @@ services:
     depends_on:
       prepare:
         condition: service_completed_successfully
-    image: *jellyfin
+    image: jellyfin/jellyfin:12.4@sha256:fea863d0cd9ec445985d9c75fc6ed64e38a1d2766cf0c250a33d553f4fc1b771
     # Jellyfin 12.4 官方多架构清单摘要；不启用转码显卡、DLNA 或局域网端口。
     user: "${PUID}:${PGID}"
     environment:
