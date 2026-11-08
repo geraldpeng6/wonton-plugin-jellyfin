@@ -5,12 +5,19 @@
 web_assert() { grep -qiE 'jellyfin|setup|wizard'; }
 
 before_install() {
-  command -v ffmpeg >/dev/null 2>&1 || { echo "缺少 ffmpeg，无法生成测试视频"; return 1; }
-  nice -n 19 ffmpeg -hide_banner -loglevel error -y \
+  # runner 上没有 ffmpeg：用清单里的 jellyfin 镜像自带的 jellyfin-ffmpeg 生成（一次性的临时容器，
+  # 共享文件夹以可写挂给容器，产物落在 media 共享的宿主目录，应用侧只读挂载）。
+  local share ref
+  share="$SMOKE_DIR/.wonton/data/shares/media"
+  ref="$(awk '/^ *image: /{print $2}' "$SMOKE_DIR/docker-compose.yml" | head -1)"
+  [[ -n "$ref" ]] || { echo "清单里没有 jellyfin 镜像"; return 1; }
+  mkdir -p "$share" || { echo "创建 media 共享文件夹失败：$share"; return 1; }
+  docker run --rm --user "$(id -u):$(id -g)" -v "$share:/out" "$ref" \
+    /usr/lib/jellyfin-ffmpeg/ffmpeg -hide_banner -loglevel error -y \
     -f lavfi -i color=c=blue:s=320x180:d=3 \
     -f lavfi -i sine=frequency=440:duration=3 \
     -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart \
-    "$work/jellyfin-e2e-test.mp4" || { echo "生成测试视频失败"; return 1; }
+    /out/e2e-test.mp4 || { echo "容器里生成测试视频失败"; return 1; }
 }
 
 _jf_password='wonton-e2e-password'
@@ -71,7 +78,7 @@ identity_check() {
   local session_auth token user_id me folders item_id headers status
 
   mkdir -p "$share" || { echo "创建 media 共享文件夹失败：$share"; return 1; }
-  cp "$work/jellyfin-e2e-test.mp4" "$share/e2e-test.mp4" || { echo "复制测试视频失败：$share"; return 1; }
+  [[ -f "$share/e2e-test.mp4" ]] || { echo "测试视频没准备好（before_install 生成失败？）：$share"; return 1; }
 
   if ! read -r token user_id <<<"$(_jf_session)"; then
     echo "管理员会话建立失败（原因见日志）"; return 1
