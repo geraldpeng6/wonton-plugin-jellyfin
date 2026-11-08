@@ -66,6 +66,7 @@ _jf_session() { # 输出 "<token> <user_id>"；管理员已存在就直接登录
 }
 
 identity_check() {
+  SMOKE_WEB_URL="${SMOKE_WEB_URL%/}"  # 套件给的地址带尾斜杠，拼路径前剥掉，避免 // 打不进路由
   local share="$SMOKE_DIR/.wonton/data/shares/media"
   local session_auth token user_id me folders item_id headers status
 
@@ -137,6 +138,7 @@ _jf_full_auth() { # <token>：拼 MediaBrowser Authorization 头
 }
 
 data_write() {
+  SMOKE_WEB_URL="${SMOKE_WEB_URL%/}"  # 套件给的地址带尾斜杠，拼路径前剥掉，避免 // 打不进路由
   local token user_id session_auth name out
   dweb --fresh / -L >/dev/null || { echo "重建网关会话失败"; return 1; }
   if ! read -r token user_id <<<"$(_jf_session)"; then echo "管理员会话建立失败（原因见日志）"; return 1; fi
@@ -153,6 +155,7 @@ data_write() {
 }
 
 data_check() {
+  SMOKE_WEB_URL="${SMOKE_WEB_URL%/}"  # 套件给的地址带尾斜杠，拼路径前剥掉，避免 // 打不进路由
   local token user_id session_auth marker out
   dweb --fresh / -L >/dev/null || { echo "重建网关会话失败"; return 1; }
   if ! read -r token user_id <<<"$(_jf_session)"; then echo "管理员会话建立失败（原因见日志）"; return 1; fi
