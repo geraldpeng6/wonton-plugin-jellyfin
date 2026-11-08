@@ -12,8 +12,9 @@ before_install() {
   ref="$(awk '/^ *image: /{print $2}' "$SMOKE_DIR/docker-compose.yml" | head -1)"
   [[ -n "$ref" ]] || { echo "清单里没有 jellyfin 镜像"; return 1; }
   # 不在这里 mkdir：冒烟副本 chmod 成只读，up 之前共享目录也不存在；docker -v 会自建宿主路径。
-  docker run --rm --user "$(id -u):$(id -g)" -v "$share:/out" "$ref" \
-    /usr/lib/jellyfin-ffmpeg/ffmpeg -hide_banner -loglevel error -y \
+  docker run --rm --user "$(id -u):$(id -g)" --entrypoint /usr/lib/jellyfin-ffmpeg/ffmpeg \
+    -v "$share:/out" "$ref" \
+    -hide_banner -loglevel error -y \
     -f lavfi -i color=c=blue:s=320x180:d=3 \
     -f lavfi -i sine=frequency=440:duration=3 \
     -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart \
