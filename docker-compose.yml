@@ -43,10 +43,10 @@ x-wonton:
   id: org.jellyfin.media
   version: 0.1.0
   kind: app
-  title: { en: Jellyfin }
+  title: { zh: 家庭影院（Jellyfin）, en: Home Theater (Jellyfin) }
   description:
-    zh: 管理和播放共享文件夹里的电影、剧集和音乐
-    en: Manage and stream movies, shows and music from your shared folder
+    zh: 像自家的爱奇艺：共享文件夹里的电影、剧集和音乐自动排成海报墙，手机、电脑打开网页就能看。适合把存下的片子全家一起看。
+    en: "Like your own Netflix: the movies, shows and music in your shared folders become a poster wall you can play from any phone or computer browser."
   icon: icon.svg
   notices: [NOTICE]
   screenshots: [screenshots/home.png]
