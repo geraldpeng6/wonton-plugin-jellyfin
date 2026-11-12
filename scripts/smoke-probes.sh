@@ -1,25 +1,45 @@
 # shellcheck shell=bash
 # Jellyfin：sso=none。上游 12.4 没有原生 OIDC，测试实例经 Startup API 创建管理员。
-# shellcheck disable=SC2154 # work 由 scripts/smoke.sh 提供
 
 web_assert() { grep -qiE 'jellyfin|setup|wizard'; }
 
 before_install() {
-  # runner 上没有 ffmpeg：用清单里的 jellyfin 镜像自带的 jellyfin-ffmpeg 生成（一次性的临时容器，
-  # 共享文件夹以可写挂给容器，产物落在 media 共享的宿主目录，应用侧只读挂载）。
-  local share ref
-  share="$SMOKE_DIR/.wonton/data/shares/media"
+  # 测试视频在容器里生成、经核心容器放进共享文件夹（应用以只读挂到 /media）：
+  # 清单里的 jellyfin 镜像自带 jellyfin-ffmpeg，探针不依赖宿主装 ffmpeg，也不碰宿主路径。
+  local ref gen tmp
   ref="$(awk '/^ *image: /{print $2}' "$SMOKE_DIR/docker-compose.yml" | head -1)"
   [[ -n "$ref" ]] || { echo "清单里没有 jellyfin 镜像"; return 1; }
-  # 不在这里 mkdir：冒烟副本 chmod 成只读，up 之前共享目录也不存在；docker -v 会自建宿主路径。
-  # 容器以 root 写：docker -v 自建的宿主目录是 root 属主，指定运行用户反而写不进（第四轮 CI 实测）。
-  # 产物 0644，应用（PUID 只读挂 /media）读得到。
-  docker run --rm --entrypoint /usr/lib/jellyfin-ffmpeg/ffmpeg -v "$share:/out" "$ref" \
+  # 共享文件夹在核心容器里就是 $SMOKE_DATA_DIR/shares/<名字>，先建目录（首装前它还不存在）。
+  docker exec "$SMOKE_CORE" mkdir -p "$SMOKE_DATA_DIR/shares/media" ||
+    { echo "建共享文件夹失败（核心容器里）"; return 1; }
+  # mp4 要可寻位的输出，只能先落文件再拷：一次性容器生成，docker cp 经宿主临时文件进核心容器。
+  gen="wonton-${SMOKE_INSTANCE}-smoke-video"
+  tmp="$(mktemp)"
+  docker rm -f "$gen" >/dev/null 2>&1 || true
+  if ! docker run --name "$gen" --label "wonton.instance=$SMOKE_INSTANCE" \
+    --entrypoint /usr/lib/jellyfin-ffmpeg/ffmpeg "$ref" \
     -hide_banner -loglevel error -y \
     -f lavfi -i color=c=blue:s=320x180:d=3 \
     -f lavfi -i sine=frequency=440:duration=3 \
     -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart \
-    /out/e2e-test.mp4 || { echo "容器里生成测试视频失败"; return 1; }
+    /tmp/e2e-test.mp4; then
+    docker rm -f "$gen" >/dev/null 2>&1 || true
+    rm -f "$tmp"
+    echo "容器里生成测试视频失败"
+    return 1
+  fi
+  if ! docker cp "$gen:/tmp/e2e-test.mp4" "$tmp" ||
+    ! docker cp "$tmp" "$SMOKE_CORE:$SMOKE_DATA_DIR/shares/media/e2e-test.mp4"; then
+    docker rm -f "$gen" >/dev/null 2>&1 || true
+    rm -f "$tmp"
+    echo "测试视频拷进共享文件夹失败"
+    return 1
+  fi
+  docker rm "$gen" >/dev/null 2>&1 || true
+  rm -f "$tmp"
+  docker exec "$SMOKE_CORE" test -s "$SMOKE_DATA_DIR/shares/media/e2e-test.mp4" ||
+    { echo "测试视频没写进共享文件夹"; return 1; }
+  echo "测试视频已放进共享文件夹（核心容器 $SMOKE_CORE：$SMOKE_DATA_DIR/shares/media/e2e-test.mp4）"
 }
 
 _jf_password='wonton-e2e-password'
@@ -75,12 +95,10 @@ _jf_session() { # 输出 "<token> <user_id>"；管理员已存在就直接登录
 }
 
 identity_check() {
-  SMOKE_WEB_URL="${SMOKE_WEB_URL%/}"  # 套件给的地址带尾斜杠，拼路径前剥掉，避免 // 打不进路由
-  local share="$SMOKE_DIR/.wonton/data/shares/media"
   local session_auth token user_id me folders item_id headers status
 
-  mkdir -p "$share" || { echo "创建 media 共享文件夹失败：$share"; return 1; }
-  [[ -f "$share/e2e-test.mp4" ]] || { echo "测试视频没准备好（before_install 生成失败？）：$share"; return 1; }
+  docker exec "$SMOKE_CORE" test -s "$SMOKE_DATA_DIR/shares/media/e2e-test.mp4" ||
+    { echo "测试视频没准备好（before_install 生成失败？）"; return 1; }
 
   if ! read -r token user_id <<<"$(_jf_session)"; then
     echo "管理员会话建立失败（原因见日志）"; return 1
@@ -117,7 +135,7 @@ identity_check() {
   done
   [[ -n "$item_id" ]] || {
     echo "扫描不到 /media/e2e-test.mp4"
-    echo "共享目录：$(ls -la "$share" 2>&1 || true)"
+    echo "共享文件夹：$(docker exec "$SMOKE_CORE" ls -la "$SMOKE_DATA_DIR/shares/media" 2>&1 || true)"
     echo "媒体库：$(curl -sS --noproxy '*' -b "$SMOKE_JAR" -H "Authorization: $session_auth" "$SMOKE_WEB_URL/Library/VirtualFolders" 2>&1 || true)"
     echo "Items：$folders"
     return 1
@@ -136,18 +154,13 @@ identity_check() {
 }
 
 # 数据：账号、媒体库和播放列表都在插件数据目录（docker-compose.yml 的 ${WONTON_APP_DATA}:/config）。
-# data_write 用管理员会话建一个带随机标记的播放列表，标记记进 SMOKE_STATE；data_check 在升级、
+# data_write 用管理员会话建一个带随机标记的播放列表，标记写进 $SMOKE_STATE；data_check 在升级、
 # 重装后重新登录，从 Items API 找回播放列表。升级和重装会重建核心，网关会话要重建。
-_jf_marker_file() { # 标记文件：SMOKE_STATE 在 dev.sh probes 里是目录，目录里放标记文件
-  if [[ -d "${SMOKE_STATE:-}" ]]; then printf '%s/data-marker' "$SMOKE_STATE"; else printf '%s' "${SMOKE_STATE:-}"; fi
-}
-
 _jf_full_auth() { # <token>：拼 MediaBrowser Authorization 头
   printf 'MediaBrowser Client="Wonton Smoke", Device="smoke", DeviceId="wonton-smoke", Version="1.0.0", Token="%s"' "$1"
 }
 
 data_write() {
-  SMOKE_WEB_URL="${SMOKE_WEB_URL%/}"  # 套件给的地址带尾斜杠，拼路径前剥掉，避免 // 打不进路由
   local token user_id session_auth name out
   dweb --fresh / -L >/dev/null || { echo "重建网关会话失败"; return 1; }
   if ! read -r token user_id <<<"$(_jf_session)"; then echo "管理员会话建立失败（原因见日志）"; return 1; fi
@@ -158,19 +171,18 @@ data_write() {
     -d "$(jq -nc --arg n "$name" --arg u "$user_id" '{Name:$n,Ids:[],UserId:$u}')" \
     "$SMOKE_WEB_URL/Playlists")" || { echo "建播放列表失败：$out"; return 1; }
   jq -e --arg n "$name" '.Id != null and .Id != ""' <<<"$out" >/dev/null || { echo "建播放列表没返回 Id：$out"; return 1; }
-  jq -nc --arg id "$(jq -r .Id <<<"$out")" --arg name "$name" '{id:$id,name:$name}' >"$(_jf_marker_file)" ||
-    { echo "写不进标记文件 $(_jf_marker_file)"; return 1; }
+  jq -nc --arg id "$(jq -r .Id <<<"$out")" --arg name "$name" '{id:$id,name:$name}' >"$SMOKE_STATE" ||
+    { echo "标记写不进 $SMOKE_STATE"; return 1; }
   echo "已建播放列表 $name"
 }
 
 data_check() {
-  SMOKE_WEB_URL="${SMOKE_WEB_URL%/}"  # 套件给的地址带尾斜杠，拼路径前剥掉，避免 // 打不进路由
   local token user_id session_auth marker out
   dweb --fresh / -L >/dev/null || { echo "重建网关会话失败"; return 1; }
   if ! read -r token user_id <<<"$(_jf_session)"; then echo "管理员会话建立失败（原因见日志）"; return 1; fi
   session_auth="$(_jf_full_auth "$token")"
-  marker="$(cat "$(_jf_marker_file)" 2>/dev/null)" || true
-  [[ -n "$marker" ]] || { echo "没有 data_write 留下的标记（SMOKE_STATE=${SMOKE_STATE:-未设置}）"; return 1; }
+  marker="$(cat "$SMOKE_STATE" 2>/dev/null)" || marker=""
+  [[ -n "$marker" ]] || { echo "没有 data_write 留下的标记"; return 1; }
   out="$(curl -sS --noproxy '*' --fail-with-body -b "$SMOKE_JAR" -H "Authorization: $session_auth" \
     "$SMOKE_WEB_URL/Items?IncludeItemTypes=Playlist&Recursive=true")" ||
     { echo "读播放列表失败：$out"; return 1; }
